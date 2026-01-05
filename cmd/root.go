@@ -20,8 +20,8 @@ func main() {
 		err = runInit(args)
 	case "attack":
 		err = runAttack(args)
-	// case "report":
-	// 	err = runReport(args)
+	case "report":
+		err = runReport(args)
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown command: %s\n", cmd)
 		os.Exit(1)

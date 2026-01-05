@@ -167,6 +167,7 @@ func (r *Runner) doRequest(base *http.Request) Result {
 
 	if err != nil {
 		res.Error = classifyError(err)
+		res.FailPhase = res.Error
 		return res
 	}
 	res.Code = resp.StatusCode
@@ -175,18 +176,19 @@ func (r *Runner) doRequest(base *http.Request) Result {
 	return res
 }
 
-// classifyError creates a taxonomy label for an error.
 func classifyError(err error) string {
-	if os.IsTimeout(err) {
-		return "timeout"
-	}
+	msg := err.Error()
 	switch {
-	case strings.Contains(err.Error(), "no such host"):
+	case os.IsTimeout(err):
+		return "timeout"
+	case strings.Contains(msg, "no such host"):
 		return "dns"
-	case strings.Contains(err.Error(), "connection refused"):
+	case strings.Contains(msg, "connection refused"), strings.Contains(msg, "connect"):
 		return "connect"
-	case strings.Contains(err.Error(), "tls"):
+	case strings.Contains(msg, "tls"):
 		return "tls"
+	case strings.Contains(msg, "EOF"), strings.Contains(msg, "read"):
+		return "ttfb"
 	default:
 		return "other"
 	}

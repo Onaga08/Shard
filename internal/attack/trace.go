@@ -9,11 +9,11 @@ type PhaseTimings struct {
 	TTFB    time.Duration `json:"ttfb"`
 	Total   time.Duration `json:"total"`
 }
-
 type Result struct {
 	Timestamp time.Time    `json:"ts"`
 	Code      int          `json:"code"`
 	Error     string       `json:"error,omitempty"`
+	FailPhase string       `json:"fail_phase,omitempty"`
 	Reused    bool         `json:"reused"`
 	Phases    PhaseTimings `json:"phases"`
 }

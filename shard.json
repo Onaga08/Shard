@@ -1,12 +1,10 @@
 {
-  "target": {
-    "url": "https://example.com",
-    "method": "GET",
-    "headers": {
-      "User-Agent": "shard/1.0"
-    },
-    "body_file": ""
-  },
+"target": {
+  "url": "https://no-such-domain-9999999.com",
+  "method": "GET",
+  "headers": {"User-Agent": "shard/1.0"},
+  "body_file": ""
+},
   "load": {
     "rate": 50,
     "duration": "10s",
