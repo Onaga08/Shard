@@ -23,19 +23,21 @@ type phaseStats struct {
 }
 
 type Aggregator struct {
-	count       int
-	status      map[int]int
-	errors      map[string]int
-	stats       map[string]*phaseStats
-	failByPhase map[string]int
+	count        int
+	status       map[int]int
+	errors       map[string]int
+	stats        map[string]*phaseStats
+	failByPhase  map[string]int
+	statusFamily map[string]int
 }
 
 func New() *Aggregator {
 	a := &Aggregator{
-		status:      make(map[int]int),
-		errors:      make(map[string]int),
-		stats:       make(map[string]*phaseStats),
-		failByPhase: make(map[string]int),
+		status:       make(map[int]int),
+		errors:       make(map[string]int),
+		stats:        make(map[string]*phaseStats),
+		failByPhase:  make(map[string]int),
+		statusFamily: make(map[string]int),
 	}
 	for _, p := range PhaseNames {
 		a.stats[p] = &phaseStats{Min: 1e9} // initialize with large min
@@ -49,6 +51,11 @@ func (a *Aggregator) Add(r attack.Result) {
 	// --- handle status code ---
 	if r.Code > 0 {
 		a.status[r.Code]++
+		fam := r.Code / 100
+		if fam >= 2 && fam <= 5 {
+			key := fmt.Sprintf("%dxx", fam)
+			a.statusFamily[key]++
+		}
 	}
 
 	// --- handle errors and failure phase ---
@@ -108,6 +115,14 @@ func (a *Aggregator) LoadJSONL(path string) error {
 // Report prints raw math statistics per phase
 func (a *Aggregator) Report(w io.Writer) {
 	fmt.Fprintf(w, "\n=== Summary (%d requests) ===\n", a.count)
+
+	fmt.Fprintln(w, "\nStatus families:")
+	// print in order 2xx..5xx if present
+	for _, fam := range []string{"2xx", "3xx", "4xx", "5xx"} {
+		if v, ok := a.statusFamily[fam]; ok {
+			fmt.Fprintf(w, "  %-3s : %d\n", fam, v)
+		}
+	}
 
 	fmt.Fprintln(w, "\nStatus codes:")
 	for _, code := range sortedKeysInt(a.status) {

@@ -20,6 +20,7 @@ type LoadConfig struct {
 	Rate             int    `json:"rate"`
 	Duration         string `json:"duration"`
 	Concurrency      int    `json:"concurrency"`
+	QueueSize        int    `json:"queue_size"`
 	Timeout          string `json:"timeout"`
 	DisableKeepAlive bool   `json:"disable_keepalive"`
 	InsecureTLS      bool   `json:"insecure_tls"`
@@ -79,6 +80,7 @@ func DefaultConfig() Config {
 			Rate:             50,
 			Duration:         "10s",
 			Concurrency:      256,
+			QueueSize:        512,
 			Timeout:          "10s",
 			DisableKeepAlive: false,
 			InsecureTLS:      false,
@@ -100,6 +102,10 @@ func (c *Config) Validate() error {
 	}
 	if c.Load.Concurrency <= 0 {
 		return errors.New("load.concurrency must be > 0")
+	}
+	// ensure a sensible queue size; default to 2x concurrency when unset or invalid
+	if c.Load.QueueSize <= 0 {
+		c.Load.QueueSize = c.Load.Concurrency * 2
 	}
 	if _, err := time.ParseDuration(c.Load.Duration); err != nil {
 		return fmt.Errorf("invalid load.duration: %v", err)

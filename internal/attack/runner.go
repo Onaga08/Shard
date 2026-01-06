@@ -30,6 +30,10 @@ type StatsCollector struct {
 	fail     int64
 	failMap  sync.Map
 	totalLat int64
+	twoXX    int64
+	threeXX  int64
+	fourXX   int64
+	fiveXX   int64
 }
 
 // NewRunner creates a new attack runner from config.
@@ -60,7 +64,7 @@ func (r *Runner) Run(ctx context.Context, outPath string) error {
 		return fmt.Errorf("make request: %w", err)
 	}
 
-	workCh := make(chan int)
+	workCh := make(chan int, r.cfg.Load.QueueSize)
 	results := make(chan Result, concurrency*2)
 	stats := &StatsCollector{}
 	var wg sync.WaitGroup
@@ -242,10 +246,23 @@ func (s *StatsCollector) Add(r Result) {
 	}
 	atomic.AddInt64(&s.success, 1)
 	atomic.AddInt64(&s.totalLat, r.Phases.Total.Milliseconds())
+	// per-status-family counts
+	if r.Code > 0 {
+		switch r.Code / 100 {
+		case 2:
+			atomic.AddInt64(&s.twoXX, 1)
+		case 3:
+			atomic.AddInt64(&s.threeXX, 1)
+		case 4:
+			atomic.AddInt64(&s.fourXX, 1)
+		case 5:
+			atomic.AddInt64(&s.fiveXX, 1)
+		}
+	}
 }
 
 // Snapshot returns a snapshot of current stats safely.
-func (s *StatsCollector) Snapshot() (sent, success, fail int64, avgLat float64, fails map[string]int64) {
+func (s *StatsCollector) Snapshot() (sent, success, fail int64, avgLat float64, fails map[string]int64, families map[string]int64) {
 	sent = atomic.LoadInt64(&s.sent)
 	success = atomic.LoadInt64(&s.success)
 	fail = atomic.LoadInt64(&s.fail)
@@ -258,25 +275,46 @@ func (s *StatsCollector) Snapshot() (sent, success, fail int64, avgLat float64, 
 		fails[k.(string)] = atomic.LoadInt64(v.(*int64))
 		return true
 	})
+	families = map[string]int64{
+		"2xx": atomic.LoadInt64(&s.twoXX),
+		"3xx": atomic.LoadInt64(&s.threeXX),
+		"4xx": atomic.LoadInt64(&s.fourXX),
+		"5xx": atomic.LoadInt64(&s.fiveXX),
+	}
 	return
 }
 
 // printStats prints real-time progress to terminal and writes it to progress.log.
 func printStats(stats *StatsCollector, start time.Time, progressFile *os.File) {
-	sent, success, fail, avg, fails := stats.Snapshot()
+	sent, success, fail, avg, fails, fam := stats.Snapshot()
 	elapsed := time.Since(start).Round(time.Second)
 
 	// live terminal line (overwrites)
 	fmt.Printf("\r[%v] sent=%d ok=%d fail=%d avg=%.1fms",
 		elapsed, sent, success, fail, avg)
 
+	// append families
+	var famParts []string
+	if v := fam["2xx"]; v > 0 {
+		famParts = append(famParts, fmt.Sprintf("2xx=%d", v))
+	}
+	if v := fam["3xx"]; v > 0 {
+		famParts = append(famParts, fmt.Sprintf("3xx=%d", v))
+	}
+	if v := fam["4xx"]; v > 0 {
+		famParts = append(famParts, fmt.Sprintf("4xx=%d", v))
+	}
+	if v := fam["5xx"]; v > 0 {
+		famParts = append(famParts, fmt.Sprintf("5xx=%d", v))
+	}
+	if len(famParts) > 0 {
+		fmt.Printf(" (%s)", strings.Join(famParts, " "))
+	}
+
 	// build fail breakdown
 	var failParts []string
 	for k, v := range fails {
 		failParts = append(failParts, fmt.Sprintf("%s=%d", k, v))
-	}
-	if len(failParts) > 0 {
-		fmt.Printf(" (%s)", strings.Join(failParts, ", "))
 	}
 
 	// persistent log line
@@ -284,6 +322,9 @@ func printStats(stats *StatsCollector, start time.Time, progressFile *os.File) {
 		elapsed, sent, success, fail, avg)
 	if len(failParts) > 0 {
 		line += " (" + strings.Join(failParts, ", ") + ")"
+	}
+	if len(famParts) > 0 {
+		line += " " + strings.Join(famParts, " ")
 	}
 	line += "\n"
 
