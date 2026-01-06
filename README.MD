@@ -158,4 +158,4 @@ Because:
 ## 🦉 Author
 
 Built by **Onaga08** —
-a night owl over ~4 cups of coffee.
+a night owl; over ~4 cups of coffee.
