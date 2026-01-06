@@ -52,10 +52,10 @@ That’s it.
 
 ## 📦 Installation
 
-### 🔧 Option 1 — Build from source (recommended)
+### 🔧 The Only Option Yet — Build from source (recommended)
 
 ```bash
-git clone https://github.com/yourname/shard.git
+git clone https://github.com/Onaga08/shard.git
 cd shard
 go build -o shard ./cmd
 ```
