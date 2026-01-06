@@ -10,7 +10,7 @@ import (
 
 func runReport(args []string) error {
 	fs := flag.NewFlagSet("report", flag.ExitOnError)
-	inPath := fs.String("in", "results.jsonl", "Path to JSONL results file")
+	inPath := fs.String("in", "logs.jsonl", "Path to JSONL results file")
 	fs.Parse(args)
 
 	agg := stats.New()

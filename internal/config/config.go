@@ -85,7 +85,7 @@ func DefaultConfig() Config {
 			HTTP2:            true,
 		},
 		Output: Output{
-			JSONLPath: "results.jsonl",
+			JSONLPath: "logs.jsonl",
 		},
 	}
 }

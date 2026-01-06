@@ -15,6 +15,6 @@
     "http2": true
   },
   "output": {
-    "jsonl_path": "results.jsonl"
+    "jsonl_path": "logs.jsonl"
   }
 }

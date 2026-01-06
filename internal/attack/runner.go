@@ -11,6 +11,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"shard/internal/config"
@@ -22,13 +23,22 @@ type Runner struct {
 	client *http.Client
 }
 
+// StatsCollector maintains real-time metrics.
+type StatsCollector struct {
+	sent     int64
+	success  int64
+	fail     int64
+	failMap  sync.Map
+	totalLat int64
+}
+
 // NewRunner creates a new attack runner from config.
 func NewRunner(cfg *config.Config) (*Runner, error) {
 	timeout, _ := time.ParseDuration(cfg.Load.Timeout)
 
 	transport := &http.Transport{
 		DisableKeepAlives: cfg.Load.DisableKeepAlive,
-		TLSClientConfig:   &tls.Config{InsecureSkipVerify: cfg.Load.InsecureTLS}, // ok for testing
+		TLSClientConfig:   &tls.Config{InsecureSkipVerify: cfg.Load.InsecureTLS},
 	}
 
 	client := &http.Client{
@@ -52,6 +62,7 @@ func (r *Runner) Run(ctx context.Context, outPath string) error {
 
 	workCh := make(chan int)
 	results := make(chan Result, concurrency*2)
+	stats := &StatsCollector{}
 	var wg sync.WaitGroup
 
 	// Start workers
@@ -70,17 +81,40 @@ func (r *Runner) Run(ctx context.Context, outPath string) error {
 		}(i)
 	}
 
-	// Writer goroutine
+	// Open results output file
 	outFile, err := os.Create(outPath)
 	if err != nil {
 		return fmt.Errorf("open output: %w", err)
 	}
 	defer outFile.Close()
 
+	// Open persistent progress log
+	progressFile, err := os.Create("progress.log")
+	if err != nil {
+		return fmt.Errorf("open progress log: %w", err)
+	}
+	defer progressFile.Close()
+
+	// Writer + live progress goroutine
 	go func() {
 		enc := json.NewEncoder(outFile)
-		for res := range results {
-			_ = enc.Encode(res)
+		ticker := time.NewTicker(time.Second)
+		defer ticker.Stop()
+
+		start := time.Now()
+		for {
+			select {
+			case res, ok := <-results:
+				if !ok {
+					printStats(stats, start, progressFile)
+					fmt.Fprintln(progressFile, "---- Test completed ----")
+					return
+				}
+				stats.Add(res)
+				_ = enc.Encode(res)
+			case <-ticker.C:
+				printStats(stats, start, progressFile)
+			}
 		}
 	}()
 
@@ -176,6 +210,7 @@ func (r *Runner) doRequest(base *http.Request) Result {
 	return res
 }
 
+// classifyError creates a taxonomy label for an error and phase tag.
 func classifyError(err error) string {
 	msg := err.Error()
 	switch {
@@ -191,5 +226,68 @@ func classifyError(err error) string {
 		return "ttfb"
 	default:
 		return "other"
+	}
+}
+
+// Add updates stats with a result.
+func (s *StatsCollector) Add(r Result) {
+	atomic.AddInt64(&s.sent, 1)
+	if r.Error != "" {
+		atomic.AddInt64(&s.fail, 1)
+		s.failMap.LoadOrStore(r.FailPhase, new(int64))
+		val, _ := s.failMap.Load(r.FailPhase)
+		ptr := val.(*int64)
+		atomic.AddInt64(ptr, 1)
+		return
+	}
+	atomic.AddInt64(&s.success, 1)
+	atomic.AddInt64(&s.totalLat, r.Phases.Total.Milliseconds())
+}
+
+// Snapshot returns a snapshot of current stats safely.
+func (s *StatsCollector) Snapshot() (sent, success, fail int64, avgLat float64, fails map[string]int64) {
+	sent = atomic.LoadInt64(&s.sent)
+	success = atomic.LoadInt64(&s.success)
+	fail = atomic.LoadInt64(&s.fail)
+	totalLat := atomic.LoadInt64(&s.totalLat)
+	if success > 0 {
+		avgLat = float64(totalLat) / float64(success)
+	}
+	fails = make(map[string]int64)
+	s.failMap.Range(func(k, v any) bool {
+		fails[k.(string)] = atomic.LoadInt64(v.(*int64))
+		return true
+	})
+	return
+}
+
+// printStats prints real-time progress to terminal and writes it to progress.log.
+func printStats(stats *StatsCollector, start time.Time, progressFile *os.File) {
+	sent, success, fail, avg, fails := stats.Snapshot()
+	elapsed := time.Since(start).Round(time.Second)
+
+	// live terminal line (overwrites)
+	fmt.Printf("\r[%v] sent=%d ok=%d fail=%d avg=%.1fms",
+		elapsed, sent, success, fail, avg)
+
+	// build fail breakdown
+	var failParts []string
+	for k, v := range fails {
+		failParts = append(failParts, fmt.Sprintf("%s=%d", k, v))
+	}
+	if len(failParts) > 0 {
+		fmt.Printf(" (%s)", strings.Join(failParts, ", "))
+	}
+
+	// persistent log line
+	line := fmt.Sprintf("[%v] sent=%d ok=%d fail=%d avg=%.1fms",
+		elapsed, sent, success, fail, avg)
+	if len(failParts) > 0 {
+		line += " (" + strings.Join(failParts, ", ") + ")"
+	}
+	line += "\n"
+
+	if progressFile != nil {
+		progressFile.WriteString(line)
 	}
 }
