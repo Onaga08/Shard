@@ -142,17 +142,6 @@ Shard is for engineers who like:
 * terminals
 * numbers
 * understanding failure modes
-
----
-
-## 🦉 Why “Shard”?
-
-Because:
-
-* load breaks systems into shards
-* latency fractures before failure
-* and the owl sees what others miss
-
 ---
 
 ## 🦉 Author
