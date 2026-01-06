@@ -1,0 +1,20 @@
+{
+"target": {
+  "url": "https://example.com",
+  "method": "GET",
+  "headers": {"User-Agent": "shard/1.0"},
+  "body_file": ""
+},
+  "load": {
+    "rate": 50,
+    "duration": "10s",
+    "concurrency": 256,
+    "timeout": "10s",
+    "disable_keepalive": false,
+    "insecure_tls": false,
+    "http2": true
+  },
+  "output": {
+    "jsonl_path": "logs.jsonl"
+  }
+}
